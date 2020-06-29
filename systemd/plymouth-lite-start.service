@@ -1,0 +1,18 @@
+[Unit]
+Description=Show Plymouth-lite Start Screen
+DefaultDependencies=no
+RequiresMountsFor=/run
+Before=os-bind.target
+ConditionKernelCommandLine=!plymouth.enable=0
+ConditionKernelCommandLine=!nosplash
+ConditionKernelCommandLine=splash
+ConditionVirtualization=!container
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/echo 0 > /sys/class/graphics/fbcon/cursor_blink ; /usr/bin/echo 0 > /sys/devices/virtual/graphics/fbcon/cursor_blink ; /usr/bin/chvt 7 ; /usr/bin/ply-image /usr/share/plymouth-lite/splash.png
+
+[Install]
+WantedBy=sysinit.target
+

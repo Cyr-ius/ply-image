@@ -1,8 +1,8 @@
 
 LDFLAGS?=-I/usr/include
 CFLAGS?=-L/usr/lib
-STRIP?=strip
-DESTDIR:=/usr
+STRIP?=/usr/bin/strip
+DESTDIR?=/usr
 
 all:ply-image checkmodifier
 
@@ -15,8 +15,9 @@ checkmodifier:
 	$(STRIP) $@
 
 install:
-	install -D checkmodifier $(DESTDIR)/sbin/checkmodifier
-	install -D ply-image $(DESTDIR)/usr/bin/ply-image
+	install -D systemd/* $(DESTDIR)/lib/systemd/system/
+	install -D -m 0755 checkmodifier $(DESTDIR)/sbin/checkmodifier
+	install -D -m 0755 ply-image $(DESTDIR)/bin/plymouth-lite
 
 clean:
 	rm -f ply-image checkmodifier
