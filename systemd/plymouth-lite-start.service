@@ -11,7 +11,7 @@ ConditionVirtualization=!container
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/bin/echo 0 > /sys/class/graphics/fbcon/cursor_blink ; /usr/bin/echo 0 > /sys/devices/virtual/graphics/fbcon/cursor_blink ; /usr/bin/chvt 7 ; /usr/bin/plymouth-lite /usr/share/plymouth-lite/splash.png
+ExecStart=/usr/bin/plymouth-lite /usr/share/plymouth-lite/splash.png
 
 [Install]
 WantedBy=sysinit.target
