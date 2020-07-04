@@ -465,8 +465,10 @@ int main(int argc,
         case 66:
         case 1:
           image = ply_image_new("/usr/share/plymouth-lite/splash_crash.png");
+          break;
         case 100:
           image = ply_image_new("/usr/share/plymouth-lite/splash_update.png");
+          break;
         default:
           image = ply_image_new("/usr/share/plymouth-lite/splash_crash.png"); /* Unknown error */
         }
