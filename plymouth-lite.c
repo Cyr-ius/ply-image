@@ -433,16 +433,15 @@ int main(int argc,
 
   exit_code = 0;
 
-  //hide_cursor ();
+  hide_cursor();
   if (argc == 1)
   {
     printf("Please select code number [0,1,64,65,66,100] or explicit file path for image \n\n");
     printf("\t[0,64,65] load image to /usr/share/plymouth-lite/splash.png \n");
     printf("\t[1,66]    load image to /usr/share/plymouth-lite/splash_crash.png \n");
     printf("\t[100]     load image to /usr/share/plymouth-lite/splash_update.png \n\n");
-    printf("Exemple : ./ply-image 0 or ./ply-image /foo/bar.png \n\n");
+    printf("Exemple : ./plymouth-lite 0 or ./plymouth-lite /foo/bar.png \n\n");
     return 0;
-    //image = ply_image_new ("/usr/share/plymouth-lite/splash.png");
   }
   else
   {
