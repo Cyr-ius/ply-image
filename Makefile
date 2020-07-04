@@ -4,9 +4,9 @@ CFLAGS?=-L/usr/lib
 STRIP?=/usr/bin/strip
 DESTDIR?=/usr
 
-all:ply-image checkmodifier
+all:plymouth-lite checkmodifier
 
-ply-image:
+plymouth-lite:
 	$(CC) $@.c ply-frame-buffer.c -o $(CURDIR)/$@ -lpng16 -lm -lz $(LDFLAGS) $(CFLAGS)
 	$(STRIP) $@
 
