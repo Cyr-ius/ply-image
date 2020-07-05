@@ -34,17 +34,12 @@ static bool ply_frame_buffer_open_device(ply_frame_buffer_t *buffer);
 static void ply_frame_buffer_close_device(ply_frame_buffer_t *buffer);
 static bool ply_frame_buffer_query_device(ply_frame_buffer_t *buffer);
 static bool ply_frame_buffer_map_to_device(ply_frame_buffer_t *buffer);
-
 static void ply_frame_buffer_add_area_to_flush_area(ply_frame_buffer_t *buffer,
                                                     ply_frame_buffer_area_t *area);
-
-static bool ply_frame_buffer_flush(ply_frame_buffer_t *buffer);
 
 static void ply_frame_buffer_area_intersect(ply_frame_buffer_area_t *area1,
                                             ply_frame_buffer_area_t *area2,
                                             ply_frame_buffer_area_t *result);
-
-static int ply_font_glyph(const PlymouthFont *font, wchar_t wc, u_int32_t **bitmap);
 
 static bool ply_frame_buffer_open_device(ply_frame_buffer_t *buffer)
 {
@@ -780,6 +775,12 @@ bool ply_frame_buffer_fill_with_argb32_data(ply_frame_buffer_t *buffer,
   return ply_frame_buffer_flush(buffer);
 }
 
+const char *
+ply_frame_buffer_get_bytes(ply_frame_buffer_t *buffer)
+{
+  return (char *)buffer->shadow_buffer;
+}
+
 static int
 ply_font_glyph(const PlymouthFont *font, wchar_t wc, u_int32_t **bitmap)
 {
@@ -983,10 +984,20 @@ void ply_frame_buffer_text_size(int *width,
   *height = (h == 0) ? font->height : h;
 }
 
-const char *
-ply_frame_buffer_get_bytes(ply_frame_buffer_t *buffer)
+void ply_frame_buffer_draw_rect(ply_frame_buffer_t *buffer,
+                                int x,
+                                int y,
+                                int width,
+                                int height,
+                                uint8 red,
+                                uint8 green,
+                                uint8 blue)
 {
-  return (char *)buffer->shadow_buffer;
+  int dx, dy;
+
+  for (dy = 0; dy < height; dy++)
+    for (dx = 0; dx < width; dx++)
+      ply_frame_buffer_plot_pixel(buffer, x + dx, y + dy, red, green, blue);
 }
 
 #ifdef PLY_FRAME_BUFFER_ENABLE_TEST

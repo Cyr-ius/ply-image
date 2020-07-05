@@ -97,7 +97,6 @@ bool ply_frame_buffer_device_is_open(ply_frame_buffer_t *buffer);
 char *ply_frame_buffer_get_device_name(ply_frame_buffer_t *buffer);
 void ply_frame_buffer_set_device_name(ply_frame_buffer_t *buffer,
                                       const char *device_name);
-
 void ply_frame_buffer_get_size(ply_frame_buffer_t *buffer,
                                ply_frame_buffer_area_t *size);
 bool ply_frame_buffer_fill_with_color(ply_frame_buffer_t *buffer,
@@ -145,6 +144,7 @@ bool ply_frame_buffer_fill_with_argb32_data_at_opacity_with_clip(ply_frame_buffe
                                                                  unsigned long y,
                                                                  uint32_t *data,
                                                                  double opacity);
+const char *ply_frame_buffer_get_bytes(ply_frame_buffer_t *buffer);
 static int ply_font_glyph(const PlymouthFont *font, wchar_t wc, u_int32_t **bitmap);
 static inline void ply_frame_buffer_plot_pixel(ply_frame_buffer_t *buffer,
                                                int x,
@@ -164,9 +164,15 @@ void ply_frame_buffer_draw_text(ply_frame_buffer_t *buffer,
                                 uint8 blue,
                                 const PlymouthFont *font,
                                 const char *text);
-static bool ply_frame_buffer_flush(ply_frame_buffer_t *buffer);
 
-const char *ply_frame_buffer_get_bytes(ply_frame_buffer_t *buffer);
+void ply_frame_buffer_draw_rect(ply_frame_buffer_t *buffer,
+                                int x,
+                                int y,
+                                int width,
+                                int height,
+                                uint8 red,
+                                uint8 green,
+                                uint8 blue);
 
 #endif /* PLY_FRAME_BUFFER_H */
 /* vim: set ts=4 sw=4 expandtab autoindent cindent cino={.5s,(0: */
