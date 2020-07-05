@@ -1,6 +1,6 @@
 #ifndef _HAVE_PLYMOUTH_H
 #define _HAVE_PLYMOUTH_H
-
+#define _GNU_SOURCE 1
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
@@ -24,11 +24,14 @@
 #include <unistd.h>
 #include <values.h>
 
-#define MSG_FILE_PATH "/tmp/essai"
+#include "ply-bar.h"
+#include "ply-color.h"
+
+#define MSG_FILE_PATH ""
 #define MSG_FILE_MAX_LEN 32
-#define MSG_FILE_PREFIX "KOS:"
+#define MSG_FILE_PREFIX ""
 #define MSG ""
-#define SPLIT_LINE_POS(fb)
+#define SPLIT_LINE_POS(buffer)
 
 typedef uint8_t uint8;
 
@@ -40,23 +43,6 @@ typedef uint8_t uint8;
 
 #ifndef TRUE
 #define TRUE 1
-#endif
-
-#ifndef _HAVE_PSPLASH_COLORS_H
-#define _HAVE_PSPLASH_COLORS_H
-
-/* This is the overall background color */
-#define PLYMOUTH_BACKGROUND_COLOR 0xec, 0xec, 0xe1
-
-/* This is the color of any text output */
-#define PLYMOUTH_TEXT_COLOR 0x6d, 0x6d, 0x70
-
-/* This is the color of the progress bar indicator */
-#define PLYMOUTH_BAR_COLOR 0x6d, 0x6d, 0x70
-
-/* This is the color of the progress bar background */
-#define PLYMOUTH_BAR_BACKGROUND_COLOR 0xec, 0xec, 0xe1
-
 #endif
 
 #ifndef FRAMES_PER_SECOND
@@ -72,5 +58,25 @@ typedef struct PlymouthFont
     int *index;
     u_int32_t *content;
 } PlymouthFont;
+
+#ifdef __GNUC__
+#define UNUSED(x) UNUSED_##x __attribute__((__unused__))
+#else
+#define UNUSED(x) UNUSED_##x
+#endif
+
+#define DEBUG 1
+
+#if DEBUG
+#define DBG(x, a...)                                                  \
+    {                                                                 \
+        printf(__FILE__ ":%d,%s() " x "\n", __LINE__, __func__, ##a); \
+    }
+#else
+#define DBG(x, a...) \
+    do               \
+    {                \
+    } while (0)
+#endif
 
 #endif

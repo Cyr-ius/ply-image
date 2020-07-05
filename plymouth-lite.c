@@ -18,6 +18,12 @@ hide_cursor(void)
   return true;
 }
 
+void plymouth_exit(int UNUSED(signum))
+{
+  DBG("mark");
+  plymouth_console_reset();
+}
+
 static void
 animate_at_time(ply_frame_buffer_t *buffer,
                 ply_image_t *image)
@@ -41,10 +47,69 @@ animate_at_time(ply_frame_buffer_t *buffer,
   ply_frame_buffer_unpause_updates(buffer);
 }
 
+void plymouth_draw_msg(ply_frame_buffer_t *buffer, const char *msg)
+{
+  int w, h;
+
+  ply_frame_buffer_text_size(&w, &h, &radeon_font, msg);
+
+  DBG("displaying '%s' %ix%i\n", msg, w, h);
+
+  /* Clear */
+
+  ply_frame_buffer_draw_text(buffer,
+                             (buffer->area.width - w) / 2,
+                             SPLIT_LINE_POS(buffer) - h,
+                             PLYMOUTH_TEXT_COLOR,
+                             &radeon_font,
+                             msg);
+
+  ply_frame_buffer_unpause_updates(buffer);
+  // ply_frame_buffer_flush(buffer);
+}
+
+void psplash_draw_progress(ply_frame_buffer_t *buffer, int value)
+{
+  int x, y, width, height, barwidth;
+
+  /* 4 pix border */
+  x = ((buffer->area.width - BAR_IMG_WIDTH) / 2) + 4;
+  y = SPLIT_LINE_POS(buffer) + 4;
+  width = BAR_IMG_WIDTH - 8;
+  height = BAR_IMG_HEIGHT - 8;
+
+  if (value > 0)
+  {
+    barwidth = (CLAMP(value, 0, 100) * width) / 100;
+    ply_frame_buffer_draw_rect(buffer, x + barwidth, y,
+                               width - barwidth, height,
+                               PLYMOUTH_BAR_BACKGROUND_COLOR);
+    ply_frame_buffer_draw_rect(buffer, x, y, barwidth,
+                               height, PLYMOUTH_BAR_COLOR);
+  }
+  else
+  {
+    barwidth = (CLAMP(-value, 0, 100) * width) / 100;
+    ply_frame_buffer_draw_rect(buffer, x, y,
+                               width - barwidth, height,
+                               PLYMOUTH_BAR_BACKGROUND_COLOR);
+    ply_frame_buffer_draw_rect(buffer, x + width - barwidth,
+                               y, barwidth, height,
+                               PLYMOUTH_BAR_COLOR);
+  }
+  ply_frame_buffer_unpause_updates(buffer);
+  // ply_frame_buffer_flush(buffer);
+
+  DBG("value: %i, width: %i, barwidth :%i\n", value,
+      width, barwidth);
+}
+
 static int
 parse_command(ply_frame_buffer_t *buffer, char *string)
 {
   char *command;
+
+  DBG("got cmd %s", string);
 
   if (strcmp(string, "QUIT") == 0)
     return 1;
@@ -57,7 +122,7 @@ parse_command(ply_frame_buffer_t *buffer, char *string)
   }
   else if (!strcmp(command, "MSG"))
   {
-    // ply_draw_msg(buffer, strtok(NULL, "\0"));
+    plymouth_draw_msg(buffer, strtok(NULL, "\0"));
   }
   else if (!strcmp(command, "QUIT"))
   {
@@ -65,24 +130,6 @@ parse_command(ply_frame_buffer_t *buffer, char *string)
   }
 
   return 0;
-}
-
-void plymouth_draw_msg(ply_frame_buffer_t *buffer, const char *msg)
-{
-  int w, h;
-
-  ply_frame_buffer_text_size(&w, &h, &radeon_font, msg);
-
-  /* Clear */
-
-  ply_frame_buffer_draw_text(buffer,
-                             (buffer->area.width - w) / 2,
-                             SPLIT_LINE_POS(buffer) - h,
-                             PLYMOUTH_TEXT_COLOR,
-                             &radeon_font,
-                             msg);
-
-  bool ply_frame_buffer_flush(ply_frame_buffer_t * buffer);
 }
 
 void plymouth_main(ply_frame_buffer_t *buffer, int pipe_fd, int timeout)
@@ -369,9 +416,6 @@ int main(int argc,
     }
   }
 
-  // if (!disable_console_switch)
-  // plymouth_console_switch();
-
 #ifdef PLYMOUTH_STARTUP_MSG
   plymouth_draw_msg(buffer, PLYMOUTH_STARTUP_MSG);
 #endif
@@ -382,5 +426,9 @@ int main(int argc,
   ply_frame_buffer_free(buffer);
 
   ply_image_free(image);
+
+  if (!disable_console_switch)
+    plymouth_console_reset();
+
   return exit_code;
 }
