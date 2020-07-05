@@ -18,8 +18,8 @@
 #ifndef _HAVE_PLYMOUTH_CONSOLE_H
 #define _HAVE_PLYMOUTH_CONSOLE_H
 
-void psplash_console_switch(void);
+void plymouth_console_switch(void);
 
-void psplash_console_reset(void);
+void plymouth_console_reset(void);
 
 #endif
