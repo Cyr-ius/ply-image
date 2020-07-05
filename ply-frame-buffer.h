@@ -22,11 +22,20 @@
 #ifndef PLY_FRAME_BUFFER_H
 #define PLY_FRAME_BUFFER_H
 
+enum RGBMode
+{
+  RGB565,
+  BGR565,
+  RGB888,
+  BGR888,
+  GENERIC,
+};
+
 #include <stdbool.h>
 #include <stdint.h>
-
+#include <stddef.h>
 #include "ply-utils.h"
-
+#include "plymouth-lite.h"
 typedef struct _ply_frame_buffer ply_frame_buffer_t;
 typedef struct _ply_frame_buffer_area ply_frame_buffer_area_t;
 
@@ -41,7 +50,7 @@ struct _ply_frame_buffer_area
 struct _ply_frame_buffer
 {
   char *device_name;
-  int   device_fd;
+  int device_fd;
 
   char *map_address;
   size_t size;
@@ -73,75 +82,91 @@ struct _ply_frame_buffer
   int pause_count;
 };
 
-#define PLY_FRAME_BUFFER_COLOR_TO_PIXEL_VALUE(r,g,b,a)                        \
-    (((uint8_t) (CLAMP (a * 255.0, 0.0, 255.0)) << 24)                        \
-      | ((uint8_t) (CLAMP (r * 255.0, 0.0, 255.0)) << 16)                     \
-      | ((uint8_t) (CLAMP (g * 255.0, 0.0, 255.0)) << 8)                      \
-      | ((uint8_t) (CLAMP (b * 255.0, 0.0, 255.0))))
+#define PLY_FRAME_BUFFER_COLOR_TO_PIXEL_VALUE(r, g, b, a) \
+  (((uint8_t)(CLAMP(a * 255.0, 0.0, 255.0)) << 24) | ((uint8_t)(CLAMP(r * 255.0, 0.0, 255.0)) << 16) | ((uint8_t)(CLAMP(g * 255.0, 0.0, 255.0)) << 8) | ((uint8_t)(CLAMP(b * 255.0, 0.0, 255.0))))
 
-#ifndef PLY_HIDE_FUNCTION_DECLARATIONS
-ply_frame_buffer_t *ply_frame_buffer_new (const char *device_name);
-void ply_frame_buffer_free (ply_frame_buffer_t *buffer);
-bool ply_frame_buffer_open (ply_frame_buffer_t *buffer);
-void ply_frame_buffer_pause_updates (ply_frame_buffer_t *buffer);
-bool ply_frame_buffer_unpause_updates (ply_frame_buffer_t *buffer);
-bool ply_frame_buffer_device_is_open (ply_frame_buffer_t *buffer); 
-char *ply_frame_buffer_get_device_name (ply_frame_buffer_t *buffer);
-void ply_frame_buffer_set_device_name (ply_frame_buffer_t *buffer,
-                                       const char     *device_name);
-void ply_frame_buffer_close (ply_frame_buffer_t *buffer);
-void ply_frame_buffer_get_size (ply_frame_buffer_t     *buffer,
-                                ply_frame_buffer_area_t *size);
-bool ply_frame_buffer_fill_with_color (ply_frame_buffer_t      *buffer,
-                                       ply_frame_buffer_area_t  *area,
-                                       double               red, 
-                                       double               green,
-                                       double               blue, 
-                                       double               alpha);
-bool ply_frame_buffer_fill_with_hex_color (ply_frame_buffer_t      *buffer,
-                                           ply_frame_buffer_area_t *area,
-                                           uint32_t                 hex_color);
+ply_frame_buffer_t *ply_frame_buffer_new(const char *device_name);
+void ply_frame_buffer_free(ply_frame_buffer_t *buffer);
+static bool ply_frame_buffer_open_device(ply_frame_buffer_t *buffer);
+static void ply_frame_buffer_close_device(ply_frame_buffer_t *buffer);
+void ply_frame_buffer_close(ply_frame_buffer_t *buffer);
+bool ply_frame_buffer_open(ply_frame_buffer_t *buffer);
+void ply_frame_buffer_pause_updates(ply_frame_buffer_t *buffer);
+bool ply_frame_buffer_unpause_updates(ply_frame_buffer_t *buffer);
+bool ply_frame_buffer_device_is_open(ply_frame_buffer_t *buffer);
+char *ply_frame_buffer_get_device_name(ply_frame_buffer_t *buffer);
+void ply_frame_buffer_set_device_name(ply_frame_buffer_t *buffer,
+                                      const char *device_name);
 
-bool ply_frame_buffer_fill_with_hex_color_at_opacity (ply_frame_buffer_t      *buffer,
+void ply_frame_buffer_get_size(ply_frame_buffer_t *buffer,
+                               ply_frame_buffer_area_t *size);
+bool ply_frame_buffer_fill_with_color(ply_frame_buffer_t *buffer,
+                                      ply_frame_buffer_area_t *area,
+                                      double red,
+                                      double green,
+                                      double blue,
+                                      double alpha);
+bool ply_frame_buffer_fill_with_hex_color(ply_frame_buffer_t *buffer,
+                                          ply_frame_buffer_area_t *area,
+                                          uint32_t hex_color);
+
+bool ply_frame_buffer_fill_with_hex_color_at_opacity(ply_frame_buffer_t *buffer,
+                                                     ply_frame_buffer_area_t *area,
+                                                     uint32_t hex_color,
+                                                     double opacity);
+
+bool ply_frame_buffer_fill_with_gradient(ply_frame_buffer_t *buffer,
+                                         ply_frame_buffer_area_t *area,
+                                         uint32_t start,
+                                         uint32_t end);
+
+bool ply_frame_buffer_fill_with_argb32_data(ply_frame_buffer_t *buffer,
+                                            ply_frame_buffer_area_t *area,
+                                            unsigned long x,
+                                            unsigned long y,
+                                            uint32_t *data);
+bool ply_frame_buffer_fill_with_argb32_data_at_opacity(ply_frame_buffer_t *buffer,
+                                                       ply_frame_buffer_area_t *area,
+                                                       unsigned long x,
+                                                       unsigned long y,
+                                                       uint32_t *data,
+                                                       double opacity);
+
+bool ply_frame_buffer_fill_with_argb32_data_with_clip(ply_frame_buffer_t *buffer,
                                                       ply_frame_buffer_area_t *area,
-                                                      uint32_t                 hex_color,
-                                                      double                   opacity);
+                                                      ply_frame_buffer_area_t *clip,
+                                                      unsigned long x,
+                                                      unsigned long y,
+                                                      uint32_t *data);
+bool ply_frame_buffer_fill_with_argb32_data_at_opacity_with_clip(ply_frame_buffer_t *buffer,
+                                                                 ply_frame_buffer_area_t *area,
+                                                                 ply_frame_buffer_area_t *clip,
+                                                                 unsigned long x,
+                                                                 unsigned long y,
+                                                                 uint32_t *data,
+                                                                 double opacity);
+static int ply_font_glyph(const PlymouthFont *font, wchar_t wc, u_int32_t **bitmap);
+static inline void ply_frame_buffer_plot_pixel(ply_frame_buffer_t *buffer,
+                                               int x,
+                                               int y,
+                                               uint8 red,
+                                               uint8 green,
+                                               uint8 blue);
+void ply_frame_buffer_text_size(int *width,
+                                int *height,
+                                const PlymouthFont *font,
+                                const char *text);
+void ply_frame_buffer_draw_text(ply_frame_buffer_t *buffer,
+                                unsigned long x,
+                                unsigned long y,
+                                uint8 red,
+                                uint8 green,
+                                uint8 blue,
+                                const PlymouthFont *font,
+                                const char *text);
+static bool ply_frame_buffer_flush(ply_frame_buffer_t *buffer);
 
-bool ply_frame_buffer_fill_with_gradient (ply_frame_buffer_t      *buffer,
-					  ply_frame_buffer_area_t *area,
-					  uint32_t                 start,
-					  uint32_t                 end);
-
-bool ply_frame_buffer_fill_with_argb32_data (ply_frame_buffer_t      *buffer,
-                                             ply_frame_buffer_area_t  *area,
-                                             unsigned long        x,
-                                             unsigned long        y,
-                                             uint32_t            *data);
-bool ply_frame_buffer_fill_with_argb32_data_at_opacity (ply_frame_buffer_t      *buffer,
-                                                        ply_frame_buffer_area_t *area,
-                                                        unsigned long            x,
-                                                        unsigned long            y,
-                                                        uint32_t                *data,
-                                                        double                   opacity);
-
-bool ply_frame_buffer_fill_with_argb32_data_with_clip (ply_frame_buffer_t      *buffer,
-                                                       ply_frame_buffer_area_t  *area,
-                                                       ply_frame_buffer_area_t  *clip,
-                                                       unsigned long        x,
-                                                       unsigned long        y,
-                                                       uint32_t            *data);
-bool ply_frame_buffer_fill_with_argb32_data_at_opacity_with_clip (ply_frame_buffer_t      *buffer,
-                                                                  ply_frame_buffer_area_t *area,
-                                                                  ply_frame_buffer_area_t *clip,
-                                                                  unsigned long            x,
-                                                                  unsigned long            y,
-                                                                  uint32_t                *data,
-                                                                  double                   opacity);
-
-const char *ply_frame_buffer_get_bytes (ply_frame_buffer_t *buffer);
-
-
-#endif
+const char *ply_frame_buffer_get_bytes(ply_frame_buffer_t *buffer);
 
 #endif /* PLY_FRAME_BUFFER_H */
 /* vim: set ts=4 sw=4 expandtab autoindent cindent cino={.5s,(0: */

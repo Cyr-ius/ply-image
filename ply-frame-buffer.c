@@ -22,81 +22,65 @@
  *             Kristian Høgsberg <krh@redhat.com>
  *             Ray Strode <rstrode@redhat.com>
  */
+#include "plymouth-lite.h"
 #include "ply-frame-buffer.h"
-//#include "ply-logger.h"
 
-#include <arpa/inet.h>
-#include <assert.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <string.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/ioctl.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <values.h>
-#include <unistd.h>
 
-#include <linux/fb.h>
 
 #ifndef PLY_FRAME_BUFFER_DEFAULT_FB_DEVICE_NAME
 #define PLY_FRAME_BUFFER_DEFAULT_FB_DEVICE_NAME "/dev/fb0"
 #endif
 
-static bool ply_frame_buffer_open_device (ply_frame_buffer_t  *buffer);
-static void ply_frame_buffer_close_device (ply_frame_buffer_t *buffer);
-static bool ply_frame_buffer_query_device (ply_frame_buffer_t *buffer);
-static bool ply_frame_buffer_map_to_device (ply_frame_buffer_t *buffer);
+static bool ply_frame_buffer_open_device(ply_frame_buffer_t *buffer);
+static void ply_frame_buffer_close_device(ply_frame_buffer_t *buffer);
+static bool ply_frame_buffer_query_device(ply_frame_buffer_t *buffer);
+static bool ply_frame_buffer_map_to_device(ply_frame_buffer_t *buffer);
 
+static void ply_frame_buffer_add_area_to_flush_area(ply_frame_buffer_t *buffer,
+                                                    ply_frame_buffer_area_t *area);
 
-static void ply_frame_buffer_add_area_to_flush_area (ply_frame_buffer_t     *buffer,
-                                                     ply_frame_buffer_area_t *area);
+static bool ply_frame_buffer_flush(ply_frame_buffer_t *buffer);
 
-static bool ply_frame_buffer_flush (ply_frame_buffer_t *buffer);
+static void ply_frame_buffer_area_intersect(ply_frame_buffer_area_t *area1,
+                                            ply_frame_buffer_area_t *area2,
+                                            ply_frame_buffer_area_t *result);
 
-static void ply_frame_buffer_area_intersect (ply_frame_buffer_area_t *area1,
-                                             ply_frame_buffer_area_t *area2,
-                                             ply_frame_buffer_area_t *result);
+static int ply_font_glyph(const PlymouthFont *font, wchar_t wc, u_int32_t **bitmap);
 
-static bool
-ply_frame_buffer_open_device (ply_frame_buffer_t  *buffer)
+static bool ply_frame_buffer_open_device(ply_frame_buffer_t *buffer)
 {
-  assert (buffer != NULL);
-  assert (buffer->device_name != NULL);
-  buffer->device_fd = open (buffer->device_name, O_RDWR);
+  assert(buffer != NULL);
+  assert(buffer->device_name != NULL);
+  buffer->device_fd = open(buffer->device_name, O_RDWR);
 
   if (buffer->device_fd < 0)
-    {
-      return false;
-    }
+  {
+    return false;
+  }
 
   return true;
 }
 
 static void
-ply_frame_buffer_close_device (ply_frame_buffer_t *buffer)
+ply_frame_buffer_close_device(ply_frame_buffer_t *buffer)
 {
-  assert (buffer != NULL);
+  assert(buffer != NULL);
 
   if (buffer->map_address != MAP_FAILED)
-    {
-      munmap (buffer->map_address, buffer->size);
-      buffer->map_address = MAP_FAILED;
-    }
+  {
+    munmap(buffer->map_address, buffer->size);
+    buffer->map_address = MAP_FAILED;
+  }
 
   if (buffer->device_fd >= 0)
-    {
-      close (buffer->device_fd);
-      buffer->device_fd = -1;
-    }
+  {
+    close(buffer->device_fd);
+    buffer->device_fd = -1;
+  }
 }
 
 static void
-flush_generic (ply_frame_buffer_t *buffer)
+flush_generic(ply_frame_buffer_t *buffer)
 {
   unsigned long row, column;
   char *row_buffer;
@@ -109,20 +93,20 @@ flush_generic (ply_frame_buffer_t *buffer)
   y2 = y1 + buffer->area_to_flush.height;
 
   bytes_per_row = buffer->area_to_flush.width * buffer->bytes_per_pixel;
-  row_buffer = malloc (buffer->row_stride * buffer->bytes_per_pixel);
+  row_buffer = malloc(buffer->row_stride * buffer->bytes_per_pixel);
   for (row = y1; row < y2; row++)
-    {
-      unsigned long offset;
+  {
+    unsigned long offset;
 
-      offset = row * buffer->row_stride * buffer->bytes_per_pixel + x1 * buffer->bytes_per_pixel;
-      memcpy (buffer->map_address + offset, &buffer->shadow_buffer[row*buffer->area.width + x1],
-              buffer->area_to_flush.width * buffer->bytes_per_pixel);
-    }
-  free (row_buffer);
+    offset = row * buffer->row_stride * buffer->bytes_per_pixel + x1 * buffer->bytes_per_pixel;
+    memcpy(buffer->map_address + offset, &buffer->shadow_buffer[row * buffer->area.width + x1],
+           buffer->area_to_flush.width * buffer->bytes_per_pixel);
+  }
+  free(row_buffer);
 }
 
 static void
-flush_xrgb32 (ply_frame_buffer_t *buffer)
+flush_xrgb32(ply_frame_buffer_t *buffer)
 {
   unsigned long x1, y1, x2, y2, y;
   char *dst, *src;
@@ -133,24 +117,24 @@ flush_xrgb32 (ply_frame_buffer_t *buffer)
   y2 = y1 + buffer->area_to_flush.height;
 
   dst = &buffer->map_address[(y1 * buffer->row_stride + x1) * 4];
-  src = (char *) &buffer->shadow_buffer[y1 * buffer->area.width + x1];
+  src = (char *)&buffer->shadow_buffer[y1 * buffer->area.width + x1];
 
   if (buffer->area_to_flush.width == buffer->row_stride)
-    {
-      memcpy (dst, src, buffer->area_to_flush.width * buffer->area_to_flush.height * 4);
-      return;
-    }
+  {
+    memcpy(dst, src, buffer->area_to_flush.width * buffer->area_to_flush.height * 4);
+    return;
+  }
 
   for (y = y1; y < y2; y++)
-    {
-      memcpy (dst, src, buffer->area_to_flush.width * 4);
-      dst += buffer->row_stride * 4;
-      src += buffer->area.width * 4;
-    }
+  {
+    memcpy(dst, src, buffer->area_to_flush.width * 4);
+    dst += buffer->row_stride * 4;
+    src += buffer->area.width * 4;
+  }
 }
 
 static void
-flush_xbgr32 (ply_frame_buffer_t *buffer)
+flush_xbgr32(ply_frame_buffer_t *buffer)
 {
   unsigned long x1, y1, x2, y2, x, y;
   char *dst, *src;
@@ -161,27 +145,28 @@ flush_xbgr32 (ply_frame_buffer_t *buffer)
   y2 = y1 + buffer->area_to_flush.height;
 
   for (y = y1; y < y2; y++)
-    {
-     dst = &buffer->map_address[(y * buffer->row_stride + x1) * 4];
-     src = (char *) &buffer->shadow_buffer[y * buffer->area.width + x1];
+  {
+    dst = &buffer->map_address[(y * buffer->row_stride + x1) * 4];
+    src = (char *)&buffer->shadow_buffer[y * buffer->area.width + x1];
 
-     for (x = x1; x < x2; x++)
-       {
-         dst[0] = src[2];
-         dst[1] = src[1];
-         dst[2] = src[0];
-         dst[3] = src[3];
-         dst += 4;
-         src += 4;
-       }
+    for (x = x1; x < x2; x++)
+    {
+      dst[0] = src[2];
+      dst[1] = src[1];
+      dst[2] = src[0];
+      dst[3] = src[3];
+      dst += 4;
+      src += 4;
     }
+  }
 }
 
 static void
-flush_rgb16 (ply_frame_buffer_t *buffer)
+flush_rgb16(ply_frame_buffer_t *buffer)
 {
   unsigned long x1, y1, x2, y2, x, y;
-  unsigned short *dst; unsigned char *src;
+  unsigned short *dst;
+  unsigned char *src;
 
   x1 = buffer->area_to_flush.x;
   y1 = buffer->area_to_flush.y;
@@ -189,51 +174,50 @@ flush_rgb16 (ply_frame_buffer_t *buffer)
   y2 = y1 + buffer->area_to_flush.height;
 
   for (y = y1; y < y2; y++)
-    {
-     dst = (unsigned short *)&buffer->map_address[(y * buffer->row_stride + x1) * 2];
-     src = (unsigned char *) &buffer->shadow_buffer[y * buffer->area.width + x1];
+  {
+    dst = (unsigned short *)&buffer->map_address[(y * buffer->row_stride + x1) * 2];
+    src = (unsigned char *)&buffer->shadow_buffer[y * buffer->area.width + x1];
 
-     for (x = x1; x < x2; x++)
-       {
-         *dst++ = (src[0]>>3) << 0 | (src[1]>>2) << 5 | (src[2]>>3) << 11;
-         src += 4;
-       }
+    for (x = x1; x < x2; x++)
+    {
+      *dst++ = (src[0] >> 3) << 0 | (src[1] >> 2) << 5 | (src[2] >> 3) << 11;
+      src += 4;
     }
+  }
 }
 
 static const char const *p_visual(int visual)
 {
   static const char const *visuals[] =
-    {
-      [FB_VISUAL_MONO01] = "FB_VISUAL_MONO01",
-      [FB_VISUAL_MONO10] = "FB_VISUAL_MONO10",
-      [FB_VISUAL_TRUECOLOR] = "FB_VISUAL_TRUECOLOR",
-      [FB_VISUAL_PSEUDOCOLOR] = "FB_VISUAL_PSEUDOCOLOR",
-      [FB_VISUAL_DIRECTCOLOR] = "FB_VISUAL_DIRECTCOLOR",
-      [FB_VISUAL_STATIC_PSEUDOCOLOR] = "FB_VISUAL_STATIC_PSEUDOCOLOR",
-      NULL
-    };
+      {
+          [FB_VISUAL_MONO01] = "FB_VISUAL_MONO01",
+          [FB_VISUAL_MONO10] = "FB_VISUAL_MONO10",
+          [FB_VISUAL_TRUECOLOR] = "FB_VISUAL_TRUECOLOR",
+          [FB_VISUAL_PSEUDOCOLOR] = "FB_VISUAL_PSEUDOCOLOR",
+          [FB_VISUAL_DIRECTCOLOR] = "FB_VISUAL_DIRECTCOLOR",
+          [FB_VISUAL_STATIC_PSEUDOCOLOR] = "FB_VISUAL_STATIC_PSEUDOCOLOR",
+          NULL};
   static char unknown[] = "invalid visual: -4294967295";
 
   if (visual < FB_VISUAL_MONO01 || visual > FB_VISUAL_STATIC_PSEUDOCOLOR)
-    {
-      sprintf(unknown, "invalid visual: %d", visual);
-      return unknown;
-    }
+  {
+    sprintf(unknown, "invalid visual: %d", visual);
+    return unknown;
+  }
 
   return visuals[visual];
 }
 
 static bool
-ply_frame_buffer_query_device (ply_frame_buffer_t *buffer)
+ply_frame_buffer_query_device(ply_frame_buffer_t *buffer)
 {
   struct fb_var_screeninfo variable_screen_info;
   struct fb_fix_screeninfo fixed_screen_info;
 
-  assert (buffer != NULL);
-  assert (buffer->device_fd >= 0);
+  assert(buffer != NULL);
+  assert(buffer->device_fd >= 0);
 
-  if (ioctl (buffer->device_fd, FBIOGET_VSCREENINFO, &variable_screen_info) < 0)
+  if (ioctl(buffer->device_fd, FBIOGET_VSCREENINFO, &variable_screen_info) < 0)
     return false;
 
   if (ioctl(buffer->device_fd, FBIOGET_FSCREENINFO, &fixed_screen_info) < 0)
@@ -249,43 +233,43 @@ ply_frame_buffer_query_device (ply_frame_buffer_t *buffer)
    * We don't support that.
    */
   if (fixed_screen_info.visual != FB_VISUAL_TRUECOLOR)
+  {
+    int rc = -1;
+    int i;
+    int depths[] = {32, 24, 16, 0};
+
+    //      ply_trace("Visual was %s, trying to find usable mode.\n",
+    //                p_visual(fixed_screen_info.visual));
+
+    for (i = 0; depths[i] != 0; i++)
     {
-      int rc = -1;
-      int i;
-      int depths[] = {32, 24, 16, 0};
+      variable_screen_info.bits_per_pixel = depths[i];
+      variable_screen_info.activate |= FB_ACTIVATE_NOW | FB_ACTIVATE_FORCE;
 
-//      ply_trace("Visual was %s, trying to find usable mode.\n",
-//                p_visual(fixed_screen_info.visual));
-
-      for (i = 0; depths[i] != 0; i++)
-        {
-          variable_screen_info.bits_per_pixel = depths[i];
-          variable_screen_info.activate |= FB_ACTIVATE_NOW | FB_ACTIVATE_FORCE;
-
-          rc = ioctl(buffer->device_fd, FBIOPUT_VSCREENINFO, &variable_screen_info);
-          if (rc >= 0)
-            {
-              if (ioctl(buffer->device_fd, FBIOGET_FSCREENINFO, &fixed_screen_info) < 0)
-                return false;
-              if (fixed_screen_info.visual == FB_VISUAL_TRUECOLOR)
-                break;
-            }
-        }
-
-      if (ioctl(buffer->device_fd, FBIOGET_VSCREENINFO, &variable_screen_info) < 0)
-        return false;
-
-      if (ioctl(buffer->device_fd, FBIOGET_FSCREENINFO, &fixed_screen_info) < 0)
-        return false;
+      rc = ioctl(buffer->device_fd, FBIOPUT_VSCREENINFO, &variable_screen_info);
+      if (rc >= 0)
+      {
+        if (ioctl(buffer->device_fd, FBIOGET_FSCREENINFO, &fixed_screen_info) < 0)
+          return false;
+        if (fixed_screen_info.visual == FB_VISUAL_TRUECOLOR)
+          break;
+      }
     }
+
+    if (ioctl(buffer->device_fd, FBIOGET_VSCREENINFO, &variable_screen_info) < 0)
+      return false;
+
+    if (ioctl(buffer->device_fd, FBIOGET_FSCREENINFO, &fixed_screen_info) < 0)
+      return false;
+  }
 
   if (fixed_screen_info.visual != FB_VISUAL_TRUECOLOR ||
       variable_screen_info.bits_per_pixel < 16)
-    {
-//      ply_trace("Visual is %s; not using graphics\n",
-//                p_visual(fixed_screen_info.visual));
-      return false;
-    }
+  {
+    //      ply_trace("Visual is %s; not using graphics\n",
+    //                p_visual(fixed_screen_info.visual));
+    return false;
+  }
 
   buffer->area.x = variable_screen_info.xoffset;
   buffer->area.y = variable_screen_info.yoffset;
@@ -307,7 +291,7 @@ ply_frame_buffer_query_device (ply_frame_buffer_t *buffer)
   buffer->bytes_per_pixel = variable_screen_info.bits_per_pixel >> 3;
   buffer->row_stride = fixed_screen_info.line_length / buffer->bytes_per_pixel;
   buffer->size = buffer->area.height * buffer->row_stride * buffer->bytes_per_pixel;
-  
+
   buffer->dither_red = 0;
   buffer->dither_green = 0;
   buffer->dither_blue = 0;
@@ -318,14 +302,14 @@ ply_frame_buffer_query_device (ply_frame_buffer_t *buffer)
       buffer->blue_bit_position == 0 && buffer->bits_for_blue == 8)
     buffer->flush = flush_xrgb32;
   else if (buffer->bytes_per_pixel == 4 &&
-      buffer->red_bit_position == 0 && buffer->bits_for_red == 8 &&
-      buffer->green_bit_position == 8 && buffer->bits_for_green == 8 &&
-      buffer->blue_bit_position == 16 && buffer->bits_for_blue == 8)
+           buffer->red_bit_position == 0 && buffer->bits_for_red == 8 &&
+           buffer->green_bit_position == 8 && buffer->bits_for_green == 8 &&
+           buffer->blue_bit_position == 16 && buffer->bits_for_blue == 8)
     buffer->flush = flush_xbgr32;
   else if (buffer->bytes_per_pixel == 2 &&
-      buffer->red_bit_position == 11 && buffer->bits_for_red == 5 &&
-      buffer->green_bit_position == 5 && buffer->bits_for_green == 6 &&
-      buffer->blue_bit_position == 0 && buffer->bits_for_blue == 5)
+           buffer->red_bit_position == 11 && buffer->bits_for_red == 5 &&
+           buffer->green_bit_position == 5 && buffer->bits_for_green == 6 &&
+           buffer->blue_bit_position == 0 && buffer->bits_for_blue == 5)
     buffer->flush = flush_rgb16;
   else
     buffer->flush = flush_generic;
@@ -334,47 +318,46 @@ ply_frame_buffer_query_device (ply_frame_buffer_t *buffer)
 }
 
 static bool
-ply_frame_buffer_map_to_device (ply_frame_buffer_t *buffer)
+ply_frame_buffer_map_to_device(ply_frame_buffer_t *buffer)
 {
-  assert (buffer != NULL);
-  assert (buffer->device_fd >= 0);
-  assert (buffer->size > 0);
+  assert(buffer != NULL);
+  assert(buffer->device_fd >= 0);
+  assert(buffer->size > 0);
 
-  buffer->map_address = mmap (NULL, buffer->size, PROT_WRITE,
-                              MAP_SHARED, buffer->device_fd, 0);
+  buffer->map_address = mmap(NULL, buffer->size, PROT_WRITE,
+                             MAP_SHARED, buffer->device_fd, 0);
 
   return buffer->map_address != MAP_FAILED;
 }
 
-
-static inline void 
-ply_frame_buffer_set_value_at_pixel (ply_frame_buffer_t *buffer,
-                                       int             x,
-                                       int             y,
-                                       uint32_t        pixel_value)
+static inline void
+ply_frame_buffer_set_value_at_pixel(ply_frame_buffer_t *buffer,
+                                    int x,
+                                    int y,
+                                    uint32_t pixel_value)
 {
 
   buffer->shadow_buffer[y * buffer->area.width + x] = pixel_value;
 }
 
 static void
-ply_frame_buffer_area_union (ply_frame_buffer_area_t *area1,
-                             ply_frame_buffer_area_t *area2,
-                             ply_frame_buffer_area_t *result)
+ply_frame_buffer_area_union(ply_frame_buffer_area_t *area1,
+                            ply_frame_buffer_area_t *area2,
+                            ply_frame_buffer_area_t *result)
 {
   unsigned long x1, y1, x2, y2;
 
   if (area1->width == 0)
-    {
-      *result = *area2;
-      return;
-    }
+  {
+    *result = *area2;
+    return;
+  }
 
   if (area2->width == 0)
-    {
-      *result = *area1;
-      return;
-    }
+  {
+    *result = *area1;
+    return;
+  }
 
   x1 = area1->x + area1->width;
   y1 = area1->y + area1->height;
@@ -388,55 +371,55 @@ ply_frame_buffer_area_union (ply_frame_buffer_area_t *area1,
 }
 
 static void
-ply_frame_buffer_add_area_to_flush_area (ply_frame_buffer_t      *buffer,
-                                         ply_frame_buffer_area_t *area)
+ply_frame_buffer_add_area_to_flush_area(ply_frame_buffer_t *buffer,
+                                        ply_frame_buffer_area_t *area)
 {
   ply_frame_buffer_area_t cropped_area;
-  assert (buffer != NULL);
-  assert (area != NULL);
+  assert(buffer != NULL);
+  assert(area != NULL);
 
-  ply_frame_buffer_area_intersect (area, &buffer->area, &cropped_area);
+  ply_frame_buffer_area_intersect(area, &buffer->area, &cropped_area);
 
   if (cropped_area.width == 0 || cropped_area.height == 0)
     return;
 
-  ply_frame_buffer_area_union (&buffer->area_to_flush,
-                               &cropped_area,
-                               &buffer->area_to_flush);
+  ply_frame_buffer_area_union(&buffer->area_to_flush,
+                              &cropped_area,
+                              &buffer->area_to_flush);
 }
 
 static bool
-ply_frame_buffer_flush (ply_frame_buffer_t *buffer)
+ply_frame_buffer_flush(ply_frame_buffer_t *buffer)
 {
-  assert (buffer != NULL);
+  assert(buffer != NULL);
 
   if (buffer->pause_count > 0)
     return true;
 
-  (*buffer->flush) (buffer);
+  (*buffer->flush)(buffer);
 
   buffer->area_to_flush.x = buffer->area.width - 1;
   buffer->area_to_flush.y = buffer->area.height - 1;
-  buffer->area_to_flush.width = 0; 
-  buffer->area_to_flush.height = 0; 
+  buffer->area_to_flush.width = 0;
+  buffer->area_to_flush.height = 0;
 
   return true;
 }
 
 ply_frame_buffer_t *
-ply_frame_buffer_new (const char *device_name)
+ply_frame_buffer_new(const char *device_name)
 {
   ply_frame_buffer_t *buffer;
 
-  buffer = calloc (1, sizeof (ply_frame_buffer_t));
+  buffer = calloc(1, sizeof(ply_frame_buffer_t));
 
   if (device_name != NULL)
-    buffer->device_name = strdup (device_name);
-  else if (getenv ("FRAMEBUFFER") != NULL)
-    buffer->device_name = strdup (getenv ("FRAMEBUFFER"));
+    buffer->device_name = strdup(device_name);
+  else if (getenv("FRAMEBUFFER") != NULL)
+    buffer->device_name = strdup(getenv("FRAMEBUFFER"));
   else
-    buffer->device_name = 
-      strdup (PLY_FRAME_BUFFER_DEFAULT_FB_DEVICE_NAME);
+    buffer->device_name =
+        strdup(PLY_FRAME_BUFFER_DEFAULT_FB_DEVICE_NAME);
 
   buffer->map_address = MAP_FAILED;
   buffer->shadow_buffer = NULL;
@@ -446,120 +429,113 @@ ply_frame_buffer_new (const char *device_name)
   return buffer;
 }
 
-void
-ply_frame_buffer_free (ply_frame_buffer_t *buffer)
+void ply_frame_buffer_free(ply_frame_buffer_t *buffer)
 {
-  assert (buffer != NULL);
+  assert(buffer != NULL);
 
-  if (ply_frame_buffer_device_is_open (buffer))
-    ply_frame_buffer_close (buffer);
+  if (ply_frame_buffer_device_is_open(buffer))
+    ply_frame_buffer_close(buffer);
 
-  free (buffer->device_name);
-  free (buffer->shadow_buffer);
-  free (buffer);
+  free(buffer->device_name);
+  free(buffer->shadow_buffer);
+  free(buffer);
 }
 
-bool 
-ply_frame_buffer_open (ply_frame_buffer_t *buffer)
+bool ply_frame_buffer_open(ply_frame_buffer_t *buffer)
 {
   bool is_open;
 
-  assert (buffer != NULL);
+  assert(buffer != NULL);
 
   is_open = false;
 
-  if (!ply_frame_buffer_open_device (buffer))
-    {
-      goto out;
-    }
+  if (!ply_frame_buffer_open_device(buffer))
+  {
+    goto out;
+  }
 
-  if (!ply_frame_buffer_query_device (buffer))
-    {
-      goto out;
-    }
+  if (!ply_frame_buffer_query_device(buffer))
+  {
+    goto out;
+  }
 
-  if (!ply_frame_buffer_map_to_device (buffer))
-    {
-      goto out;
-    }
+  if (!ply_frame_buffer_map_to_device(buffer))
+  {
+    goto out;
+  }
 
   buffer->shadow_buffer =
-    realloc (buffer->shadow_buffer, 4 * buffer->area.width * buffer->area.height);
-  memset (buffer->shadow_buffer, 0, 4 * buffer->area.width * buffer->area.height);
+      realloc(buffer->shadow_buffer, 4 * buffer->area.width * buffer->area.height);
+  memset(buffer->shadow_buffer, 0, 4 * buffer->area.width * buffer->area.height);
 
   is_open = true;
 
 out:
 
   if (!is_open)
-    {
-      int saved_errno;
+  {
+    int saved_errno;
 
-      saved_errno = errno;
-      ply_frame_buffer_close_device (buffer);
-      errno = saved_errno;
-    }
+    saved_errno = errno;
+    ply_frame_buffer_close_device(buffer);
+    errno = saved_errno;
+  }
 
   return is_open;
 }
 
-void
-ply_frame_buffer_pause_updates (ply_frame_buffer_t *buffer)
+void ply_frame_buffer_pause_updates(ply_frame_buffer_t *buffer)
 {
-  assert (buffer != NULL);
+  assert(buffer != NULL);
 
   buffer->pause_count++;
 }
 
-bool
-ply_frame_buffer_unpause_updates (ply_frame_buffer_t *buffer)
+bool ply_frame_buffer_unpause_updates(ply_frame_buffer_t *buffer)
 {
-  assert (buffer != NULL);
+  assert(buffer != NULL);
 
   buffer->pause_count--;
-  return ply_frame_buffer_flush (buffer);
+  return ply_frame_buffer_flush(buffer);
 }
 
-bool 
-ply_frame_buffer_device_is_open (ply_frame_buffer_t *buffer)
+bool ply_frame_buffer_device_is_open(ply_frame_buffer_t *buffer)
 {
-  assert (buffer != NULL);
+  assert(buffer != NULL);
   return buffer->device_fd >= 0 && buffer->map_address != MAP_FAILED;
 }
 
 char *
-ply_frame_buffer_get_device_name (ply_frame_buffer_t *buffer)
+ply_frame_buffer_get_device_name(ply_frame_buffer_t *buffer)
 {
-  assert (buffer != NULL);
-  assert (ply_frame_buffer_device_is_open (buffer));
-  assert (buffer->device_name != NULL);
+  assert(buffer != NULL);
+  assert(ply_frame_buffer_device_is_open(buffer));
+  assert(buffer->device_name != NULL);
 
-  return strdup (buffer->device_name);
+  return strdup(buffer->device_name);
 }
 
-void
-ply_frame_buffer_set_device_name (ply_frame_buffer_t *buffer,
-                                  const char     *device_name)
+void ply_frame_buffer_set_device_name(ply_frame_buffer_t *buffer,
+                                      const char *device_name)
 {
-  assert (buffer != NULL);
-  assert (!ply_frame_buffer_device_is_open (buffer));
-  assert (device_name != NULL);
-  assert (buffer->device_name != NULL);
+  assert(buffer != NULL);
+  assert(!ply_frame_buffer_device_is_open(buffer));
+  assert(device_name != NULL);
+  assert(buffer->device_name != NULL);
 
-  if (strcmp (buffer->device_name, device_name) != 0)
-    {
-      free (buffer->device_name);
-      buffer->device_name = strdup (device_name);
-    }
+  if (strcmp(buffer->device_name, device_name) != 0)
+  {
+    free(buffer->device_name);
+    buffer->device_name = strdup(device_name);
+  }
 }
 
-void 
-ply_frame_buffer_close (ply_frame_buffer_t *buffer)
+void ply_frame_buffer_close(ply_frame_buffer_t *buffer)
 {
-  assert (buffer != NULL);
+  assert(buffer != NULL);
 
-  assert (ply_frame_buffer_device_is_open (buffer));
-  ply_frame_buffer_close_device (buffer);
+  assert(ply_frame_buffer_device_is_open(buffer));
+  ply_frame_buffer_close_device(buffer);
 
   buffer->bytes_per_pixel = 0;
   buffer->area.x = 0;
@@ -568,36 +544,35 @@ ply_frame_buffer_close (ply_frame_buffer_t *buffer)
   buffer->area.height = 0;
 }
 
-void 
-ply_frame_buffer_get_size (ply_frame_buffer_t     *buffer,
-                           ply_frame_buffer_area_t *size)
+void ply_frame_buffer_get_size(ply_frame_buffer_t *buffer,
+                               ply_frame_buffer_area_t *size)
 {
-  assert (buffer != NULL);
-  assert (ply_frame_buffer_device_is_open (buffer));
-  assert (size != NULL);
+  assert(buffer != NULL);
+  assert(ply_frame_buffer_device_is_open(buffer));
+  assert(size != NULL);
 
   *size = buffer->area;
 }
 
 static void
-ply_frame_buffer_area_intersect (ply_frame_buffer_area_t *area1,
-                                 ply_frame_buffer_area_t *area2,
-                                 ply_frame_buffer_area_t *result)
+ply_frame_buffer_area_intersect(ply_frame_buffer_area_t *area1,
+                                ply_frame_buffer_area_t *area2,
+                                ply_frame_buffer_area_t *result)
 {
   long x1, y1, x2, y2;
   long width, height;
 
   if (area1->width == 0)
-    {
-      *result = *area1;
-      return;
-    }
+  {
+    *result = *area1;
+    return;
+  }
 
   if (area2->width == 0)
-    {
-      *result = *area2;
-      return;
-    }
+  {
+    *result = *area2;
+    return;
+  }
 
   x1 = area1->x + area1->width;
   y1 = area1->y + area1->height;
@@ -610,22 +585,21 @@ ply_frame_buffer_area_intersect (ply_frame_buffer_area_t *area1,
   width = MIN(x1, x2) - result->x;
   height = MIN(y1, y2) - result->y;
   if (width <= 0 || height <= 0)
-    {
-      result->width = 0;
-      result->height = 0;
-    }
+  {
+    result->width = 0;
+    result->height = 0;
+  }
   else
-    {
-      result->width = width;
-      result->height = height;
-    }
+  {
+    result->width = width;
+    result->height = height;
+  }
 }
 
-bool
-ply_frame_buffer_fill_with_gradient (ply_frame_buffer_t      *buffer,
-                                     ply_frame_buffer_area_t *area,
-                                     uint32_t                 start,
-                                     uint32_t                 end)
+bool ply_frame_buffer_fill_with_gradient(ply_frame_buffer_t *buffer,
+                                         ply_frame_buffer_area_t *area,
+                                         uint32_t start,
+                                         uint32_t end)
 {
 /* The gradient produced is a linear interpolation of the two passed
  * in color stops: start and end.
@@ -677,18 +651,18 @@ ply_frame_buffer_fill_with_gradient (ply_frame_buffer_t      *buffer,
   if (area == NULL)
     area = &buffer->area;
 
-  ply_frame_buffer_area_intersect (area, &buffer->area, &cropped_area);
+  ply_frame_buffer_area_intersect(area, &buffer->area, &cropped_area);
 
-  red   = (start << RED_SHIFT) & COLOR_MASK;
+  red = (start << RED_SHIFT) & COLOR_MASK;
   green = (start << GREEN_SHIFT) & COLOR_MASK;
-  blue  = (start << BLUE_SHIFT) & COLOR_MASK;
+  blue = (start << BLUE_SHIFT) & COLOR_MASK;
 
   t = (end << RED_SHIFT) & COLOR_MASK;
-  red_step = (int32_t) (t - red) / (int32_t) buffer->area.height;
+  red_step = (int32_t)(t - red) / (int32_t)buffer->area.height;
   t = (end << GREEN_SHIFT) & COLOR_MASK;
-  green_step = (int32_t) (t - green) / (int32_t) buffer->area.height;
+  green_step = (int32_t)(t - green) / (int32_t)buffer->area.height;
   t = (end << BLUE_SHIFT) & COLOR_MASK;
-  blue_step = (int32_t) (t - blue) / (int32_t) buffer->area.height;
+  blue_step = (int32_t)(t - blue) / (int32_t)buffer->area.height;
 
   /* we use a fixed seed so that the dithering doesn't change on repaints
    * of the same area.
@@ -703,56 +677,54 @@ ply_frame_buffer_fill_with_gradient (ply_frame_buffer_t      *buffer,
  * rand() over 8 bits, such that the zeros would be overlapping with the
  * least significant fractional bits of the color channel instead.
  */
-#define NOISE() (rand () & NOISE_MASK)
+#define NOISE() (rand() & NOISE_MASK)
 
   for (y = buffer->area.y; y < buffer->area.y + buffer->area.height; y++)
+  {
+    if (cropped_area.y <= y && y < cropped_area.y + cropped_area.height)
     {
-      if (cropped_area.y <= y && y < cropped_area.y + cropped_area.height)
-        {
-          for (x = cropped_area.x; x < cropped_area.x + cropped_area.width; x++)
-            {
-              pixel =
-                  0xff000000 |
-                  (((red   + NOISE ()) & COLOR_MASK) >> RED_SHIFT) |
-                  (((green + NOISE ()) & COLOR_MASK) >> GREEN_SHIFT) |
-                  (((blue  + NOISE ()) & COLOR_MASK) >> BLUE_SHIFT);
+      for (x = cropped_area.x; x < cropped_area.x + cropped_area.width; x++)
+      {
+        pixel =
+            0xff000000 |
+            (((red + NOISE()) & COLOR_MASK) >> RED_SHIFT) |
+            (((green + NOISE()) & COLOR_MASK) >> GREEN_SHIFT) |
+            (((blue + NOISE()) & COLOR_MASK) >> BLUE_SHIFT);
 
-              buffer->shadow_buffer[y * buffer->area.width + x] = pixel;
-            }
-        }
-
-      red += red_step;
-      green += green_step;
-      blue += blue_step;
+        buffer->shadow_buffer[y * buffer->area.width + x] = pixel;
+      }
     }
 
-  ply_frame_buffer_add_area_to_flush_area (buffer, &cropped_area);
+    red += red_step;
+    green += green_step;
+    blue += blue_step;
+  }
 
-  return ply_frame_buffer_flush (buffer);
+  ply_frame_buffer_add_area_to_flush_area(buffer, &cropped_area);
+
+  return ply_frame_buffer_flush(buffer);
 }
 
-
-bool 
-ply_frame_buffer_fill_with_argb32_data_with_clip (ply_frame_buffer_t      *buffer,
-                                                   ply_frame_buffer_area_t *area,
-                                                   ply_frame_buffer_area_t *clip,
-                                                   unsigned long            x,
-                                                   unsigned long            y,
-                                                   uint32_t                *data)
+bool ply_frame_buffer_fill_with_argb32_data_with_clip(ply_frame_buffer_t *buffer,
+                                                      ply_frame_buffer_area_t *area,
+                                                      ply_frame_buffer_area_t *clip,
+                                                      unsigned long x,
+                                                      unsigned long y,
+                                                      uint32_t *data)
 {
   long row, column;
   ply_frame_buffer_area_t cropped_area;
 
-  assert (buffer != NULL);
-  assert (ply_frame_buffer_device_is_open (buffer));
+  assert(buffer != NULL);
+  assert(ply_frame_buffer_device_is_open(buffer));
 
   if (area == NULL)
     area = &buffer->area;
 
-  ply_frame_buffer_area_intersect (area, &buffer->area, &cropped_area);
+  ply_frame_buffer_area_intersect(area, &buffer->area, &cropped_area);
 
   if (clip)
-    ply_frame_buffer_area_intersect (&cropped_area, clip, &cropped_area);
+    ply_frame_buffer_area_intersect(&cropped_area, clip, &cropped_area);
 
   if (cropped_area.width == 0 || cropped_area.height == 0)
     return true;
@@ -761,62 +733,261 @@ ply_frame_buffer_fill_with_argb32_data_with_clip (ply_frame_buffer_t      *buffe
   y += cropped_area.y - area->y;
 
   for (row = y; row < y + cropped_area.height; row++)
+  {
+    for (column = x; column < x + cropped_area.width; column++)
     {
-      for (column = x; column < x + cropped_area.width; column++)
-        {
-          uint32_t pixel_value;
+      uint32_t pixel_value;
 
-          pixel_value = data[area->width * row + column];
-          if ((pixel_value >> 24) == 0x00)
-            continue;
+      pixel_value = data[area->width * row + column];
+      if ((pixel_value >> 24) == 0x00)
+        continue;
 
-          ply_frame_buffer_set_value_at_pixel (buffer,
-                                                 cropped_area.x + (column - x),
-                                                 cropped_area.y + (row - y),
-                                                 pixel_value);
-
-        }
+      ply_frame_buffer_set_value_at_pixel(buffer,
+                                          cropped_area.x + (column - x),
+                                          cropped_area.y + (row - y),
+                                          pixel_value);
     }
+  }
 
-  ply_frame_buffer_add_area_to_flush_area (buffer, &cropped_area);
+  ply_frame_buffer_add_area_to_flush_area(buffer, &cropped_area);
 
-  return ply_frame_buffer_flush (buffer);
+  return ply_frame_buffer_flush(buffer);
 }
 
-bool 
-ply_frame_buffer_fill_with_argb32_data(ply_frame_buffer_t      *buffer,
-                                                   ply_frame_buffer_area_t *area,
-                                                   unsigned long            x,
-                                                   unsigned long            y,
-                                                   uint32_t                *data)
+bool ply_frame_buffer_fill_with_argb32_data(ply_frame_buffer_t *buffer,
+                                            ply_frame_buffer_area_t *area,
+                                            unsigned long x,
+                                            unsigned long y,
+                                            uint32_t *data)
 {
   long row, column;
 
-  assert (buffer != NULL);
-  assert (ply_frame_buffer_device_is_open (buffer));
+  assert(buffer != NULL);
+  assert(ply_frame_buffer_device_is_open(buffer));
 
   if (area == NULL)
     area = &buffer->area;
 
-
   for (row = y; row < y + area->height; row++)
+  {
+    for (column = x; column < x + area->width; column++)
     {
-      for (column = x; column < x + area->width; column++)
-        {
-          buffer->shadow_buffer[(row-y) * buffer->area.width -x + column] = data[area->width * row + column];
+      buffer->shadow_buffer[(row - y) * buffer->area.width - x + column] = data[area->width * row + column];
+    }
+  }
 
-        }
+  ply_frame_buffer_add_area_to_flush_area(buffer, area);
+
+  return ply_frame_buffer_flush(buffer);
+}
+
+static int
+ply_font_glyph(const PlymouthFont *font, wchar_t wc, u_int32_t **bitmap)
+{
+  int mask = font->index_mask;
+  int i;
+
+  for (;;)
+  {
+    for (i = font->offset[wc & mask]; font->index[i]; i += 2)
+    {
+      if ((wchar_t)(font->index[i] & ~mask) == (wc & ~mask))
+      {
+        if (bitmap != NULL)
+          *bitmap = &font->content[font->index[i + 1]];
+        return font->index[i] & mask;
+      }
+    }
+  }
+  return 0;
+}
+
+static inline void
+ply_frame_buffer_plot_pixel(ply_frame_buffer_t *buffer,
+                            int x,
+                            int y,
+                            uint8 red,
+                            uint8 green,
+                            uint8 blue)
+{
+  int off;
+
+  if (x < 0 || x > buffer->area.width - 1 || y < 0 || y > buffer->area.height - 1)
+    return;
+
+  // switch (buffer->angle)
+  // {
+  // case 270:
+  //   off = OFFSET(buffer, buffer->area.height - y - 1, x);
+  //   break;
+  // case 180:
+  //   off = OFFSET(buffer, buffer->area.width - x - 1, buffer->area.height - y - 1);
+  //   break;
+  // case 90:
+  //   off = OFFSET(buffer, y, buffer->area.width - x - 1);
+  //   break;
+  // case 0:
+  // default:
+  //   off = OFFSET(buffer, x, y);
+  //   break;
+  // }
+
+  //   if (buffer->rgbmode == RGB565 || buffer->rgbmode == RGB888)
+  //   {
+  //     switch (buffer->bpp)
+  //     {
+  //     case 24:
+  // #if __BYTE_ORDER == __BIG_ENDIAN
+  //       *(buffer->data + off + 0) = red;
+  //       *(buffer->data + off + 1) = green;
+  //       *(buffer->data + off + 2) = blue;
+  // #else
+  //       *(buffer->data + off + 0) = blue;
+  //       *(buffer->data + off + 1) = green;
+  //       *(buffer->data + off + 2) = red;
+  // #endif
+  //       break;
+  //     case 32:
+  //       *(volatile uint32_t *)(buffer->data + off) = (red << 16) | (green << 8) | (blue);
+  //       break;
+
+  //     case 16:
+  //       *(volatile uint16_t *)(buffer->data + off) = ((red >> 3) << 11) | ((green >> 2) << 5) | (blue >> 3);
+  //       break;
+  //     default:
+  //       /* depth not supported yet */
+  //       break;
+  //     }
+  //   }
+  //   else if (buffer->rgbmode == BGR565 || buffer->rgbmode == BGR888)
+  //   {
+  //     switch (buffer->bpp)
+  //     {
+  //     case 24:
+  // #if __BYTE_ORDER == __BIG_ENDIAN
+  //       *(buffer->data + off + 0) = blue;
+  //       *(buffer->data + off + 1) = green;
+  //       *(buffer->data + off + 2) = red;
+  // #else
+  //       *(buffer->data + off + 0) = red;
+  //       *(buffer->data + off + 1) = green;
+  //       *(buffer->data + off + 2) = blue;
+  // #endif
+  //       break;
+  //     case 32:
+  //       *(volatile uint32_t *)(buffer->data + off) = (blue << 16) | (green << 8) | (red);
+  //       break;
+  //     case 16:
+  //       *(volatile uint16_t *)(buffer->data + off) = ((blue >> 3) << 11) | ((green >> 2) << 5) | (red >> 3);
+  //       break;
+  //     default:
+  //       /* depth not supported yet */
+  //       break;
+  //     }
+  //   }
+  //   else
+  //   {
+  //     switch (buffer->bpp)
+  //     {
+  //     case 32:
+  //       *(volatile uint32_t *)(buffer->data + off) = ((red >> (8 - buffer->bits_for_red)) << buffer->red_bit_position) | ((green >> (8 - buffer->bits_for_green)) << buffer->green_bit_position) | ((blue >> (8 - buffer->blue_bit_position)) << buffer->blue_bit_position);
+  //       break;
+  //     case 16:
+  //       *(volatile uint16_t *)(buffer->data + off) = ((red >> (8 - buffer->bits_for_red)) << buffer->red_bit_position) | ((green >> (8 - buffer->bits_for_green)) << buffer->green_bit_position) | ((blue >> (8 - buffer->blue_bit_position)) << buffer->blue_bit_position);
+  //       break;
+  //     default:
+  //       /* depth not supported yet */
+  //       break;
+  //     }
+  //   }
+}
+
+void ply_frame_buffer_draw_text(ply_frame_buffer_t *buffer,
+                                unsigned long x,
+                                unsigned long y,
+                                uint8 red,
+                                uint8 green,
+                                uint8 blue,
+                                const PlymouthFont *font,
+                                const char *text)
+{
+  int h, w, k, n, cx, cy, dx, dy;
+  char *c = (char *)text;
+  wchar_t wc;
+
+  n = strlen(text);
+  h = font->height;
+  dx = dy = 0;
+
+  mbtowc(0, 0, 0);
+  for (; (k = mbtowc(&wc, c, n)) > 0; c += k, n -= k)
+  {
+    u_int32_t *glyph = NULL;
+
+    if (*c == '\n')
+    {
+      dy += h;
+      dx = 0;
+      continue;
     }
 
-  ply_frame_buffer_add_area_to_flush_area (buffer, area);
+    w = ply_font_glyph(font, wc, &glyph);
 
-  return ply_frame_buffer_flush (buffer);
+    if (glyph == NULL)
+      continue;
+
+    for (cy = 0; cy < h; cy++)
+    {
+      u_int32_t g = *glyph++;
+
+      for (cx = 0; cx < w; cx++)
+      {
+        if (g & 0x80000000)
+          ply_frame_buffer_plot_pixel(buffer, x + dx + cx, y + dy + cy,
+                                      red, green, blue);
+        g <<= 1;
+      }
+    }
+
+    dx += w;
+  }
 }
-  
-const char *
-ply_frame_buffer_get_bytes (ply_frame_buffer_t *buffer)
+
+void ply_frame_buffer_text_size(int *width,
+                                int *height,
+                                const PlymouthFont *font,
+                                const char *text)
 {
-  return (char *) buffer->shadow_buffer;
+  char *c = (char *)text;
+  wchar_t wc;
+  int k, n, w, h, mw;
+
+  n = strlen(text);
+  mw = h = w = 0;
+
+  mbtowc(0, 0, 0);
+  for (; (k = mbtowc(&wc, c, n)) > 0; c += k, n -= k)
+  {
+    if (*c == '\n')
+    {
+      if (w > mw)
+        mw = w;
+      w = 0;
+      h += font->height;
+      continue;
+    }
+
+    w += ply_font_glyph(font, wc, NULL);
+  }
+
+  *width = (w > mw) ? w : mw;
+  *height = (h == 0) ? font->height : h;
+}
+
+const char *
+ply_frame_buffer_get_bytes(ply_frame_buffer_t *buffer)
+{
+  return (char *)buffer->shadow_buffer;
 }
 
 #ifdef PLY_FRAME_BUFFER_ENABLE_TEST
@@ -826,56 +997,55 @@ ply_frame_buffer_get_bytes (ply_frame_buffer_t *buffer)
 #include <sys/time.h>
 
 static double
-get_current_time (void)
+get_current_time(void)
 {
   const double microseconds_per_second = 1000000.0;
   double timestamp;
-  struct timeval now = { 0L, /* zero-filled */ };
+  struct timeval now = {0L, /* zero-filled */};
 
-  gettimeofday (&now, NULL);
+  gettimeofday(&now, NULL);
   timestamp = ((microseconds_per_second * now.tv_sec) + now.tv_usec) /
-               microseconds_per_second;
+              microseconds_per_second;
 
   return timestamp;
 }
 
 static void
-animate_at_time (ply_frame_buffer_t *buffer,
-                 double          time)
+animate_at_time(ply_frame_buffer_t *buffer,
+                double time)
 {
   int x, y;
   uint32_t *data;
   ply_frame_buffer_area_t area;
 
-  ply_frame_buffer_get_size (buffer, &area);
+  ply_frame_buffer_get_size(buffer, &area);
 
-  data = calloc (area.width * area.height, sizeof (uint32_t));
+  data = calloc(area.width * area.height, sizeof(uint32_t));
 
   for (y = 0; y < area.height; y++)
+  {
+    int blue_bit_position;
+    uint8_t red, green, blue, alpha;
+
+    blue_bit_position = (int)64 * (.5 * sin(time) + .5) + (255 - 64);
+    blue = rand() % blue_bit_position;
+    for (x = 0; x < area.width; x++)
     {
-      int blue_bit_position;
-      uint8_t red, green, blue, alpha;
+      alpha = 0xff;
+      red = (uint8_t)((y / (area.height * 1.0)) * 255.0);
+      green = (uint8_t)((x / (area.width * 1.0)) * 255.0);
 
-      blue_bit_position = (int) 64 * (.5 * sin (time) + .5) + (255 - 64);
-      blue = rand () % blue_bit_position;
-      for (x = 0; x < area.width; x++)
-      {
-        alpha = 0xff;
-        red = (uint8_t) ((y / (area.height * 1.0)) * 255.0);
-        green = (uint8_t) ((x / (area.width * 1.0)) * 255.0);
+      red = green = (red + green + blue) / 3;
 
-        red = green = (red + green + blue) / 3;
-
-        data[y * area.width + x] = (alpha << 24) | (red << 16) | (green << 8) | blue;
-      }
+      data[y * area.width + x] = (alpha << 24) | (red << 16) | (green << 8) | blue;
     }
+  }
 
-  ply_frame_buffer_fill_with_argb32_data (buffer, NULL, 0, 0, data);
+  ply_frame_buffer_fill_with_argb32_data(buffer, NULL, 0, 0, data);
 }
 
-int
-main (int    argc,
-      char **argv)
+int main(int argc,
+         char **argv)
 {
   static unsigned int seed = 0;
   ply_frame_buffer_t *buffer;
@@ -883,30 +1053,30 @@ main (int    argc,
 
   exit_code = 0;
 
-  buffer = ply_frame_buffer_new (NULL);
+  buffer = ply_frame_buffer_new(NULL);
 
-  if (!ply_frame_buffer_open (buffer))
-    {
-      exit_code = errno;
-      perror ("could not open frame buffer");
-      return exit_code;
-    }
+  if (!ply_frame_buffer_open(buffer))
+  {
+    exit_code = errno;
+    perror("could not open frame buffer");
+    return exit_code;
+  }
 
   if (seed == 0)
-    {
-      seed = (int) get_current_time ();
-      srand (seed);
-    }
+  {
+    seed = (int)get_current_time();
+    srand(seed);
+  }
 
   while ("we want to see ad-hoc animations")
-    {
-      animate_at_time (buffer, get_current_time ());
-    }
+  {
+    animate_at_time(buffer, get_current_time());
+  }
 
-  ply_frame_buffer_close (buffer);
-  ply_frame_buffer_free (buffer);
+  ply_frame_buffer_close(buffer);
+  ply_frame_buffer_free(buffer);
 
-  return main (argc, argv);
+  return main(argc, argv);
 }
 
 #endif /* PLY_FRAME_BUFFER_ENABLE_TEST */
