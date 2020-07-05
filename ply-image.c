@@ -25,6 +25,7 @@
  *             Kristian Høgsberg <krh@redhat.com>
  *             Ray Strode <rstrode@redhat.com>
  *             Carl D. Worth <cworth@cworth.org>
+ *             Cedric Levasseur <cedric.levasseur@ipocus.net>
  */
 #include "plymouth-lite.h"
 #include "ply-image.h"

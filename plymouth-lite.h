@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <linux/fb.h>
 #include <linux/kd.h>
+#include <linux/vt.h>
 #include <math.h>
 #include <png.h>
 #include <signal.h>

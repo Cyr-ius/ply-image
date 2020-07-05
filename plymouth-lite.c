@@ -1,7 +1,7 @@
 #include "ply-image.h"
 #include "ply-config.h"
-#include "plymouth-lite.h"
 #include "ply-frame-buffer.h"
+#include "ply-console.h"
 #include "radeon-font.h"
 
 static int console_fd;
@@ -85,24 +85,95 @@ void plymouth_draw_msg(ply_frame_buffer_t *buffer, const char *msg)
   bool ply_frame_buffer_flush(ply_frame_buffer_t * buffer);
 }
 
+void plymouth_main(ply_frame_buffer_t *buffer, int pipe_fd, int timeout)
+{
+  int err;
+  ssize_t length = 0;
+  fd_set descriptors;
+  struct timeval tv;
+  char *end;
+  char command[2048];
+
+  tv.tv_sec = timeout;
+  tv.tv_usec = 0;
+
+  FD_ZERO(&descriptors);
+  FD_SET(pipe_fd, &descriptors);
+
+  end = command;
+
+  while (1)
+  {
+    if (timeout != 0)
+      err = select(pipe_fd + 1, &descriptors, NULL, NULL, &tv);
+    else
+      err = select(pipe_fd + 1, &descriptors, NULL, NULL, NULL);
+
+    if (err <= 0)
+    {
+      /*
+	  if (errno == EINTR)
+	    continue;
+	  */
+      return;
+    }
+
+    length += read(pipe_fd, end, sizeof(command) - (end - command));
+
+    if (length == 0)
+    {
+      /* Reopen to see if there's anything more for us */
+      close(pipe_fd);
+      pipe_fd = open(PLYMOUTH_FIFO, O_RDONLY | O_NONBLOCK);
+      goto out;
+    }
+
+    if (command[length - 1] == '\0')
+    {
+      if (parse_command(buffer, command))
+        return;
+      length = 0;
+    }
+    else if (command[length - 1] == '\n')
+    {
+      command[length - 1] = '\0';
+      if (parse_command(buffer, command))
+        return;
+      length = 0;
+    }
+
+  out:
+    end = &command[length];
+
+    tv.tv_sec = timeout;
+    tv.tv_usec = 0;
+
+    FD_ZERO(&descriptors);
+    FD_SET(pipe_fd, &descriptors);
+  }
+
+  return;
+}
+
 int main(int argc,
          char **argv)
 {
   ply_image_t *image;
   ply_frame_buffer_t *buffer;
+  char *tmpdir;
   int i = 0, angle = 0, fbdev_id = 0, retcode = -1;
   int pipe_fd;
   bool disable_console_switch = FALSE;
   bool disable_message = FALSE;
   bool disable_progress_bar = FALSE;
   bool disable_logo = FALSE;
+  bool disable_cursor = FALSE;
   FILE *fd_msg;
   char *str_msg;
   int exit_code;
 
   exit_code = 0;
 
-  // hide_cursor();
   if (argc == 1)
   {
     return exit_code;
@@ -112,6 +183,12 @@ int main(int argc,
     if (!strcmp(argv[i], "-n") || !strcmp(argv[i], "--no-console-switch"))
     {
       disable_console_switch = TRUE;
+      continue;
+    }
+
+    if (!strcmp(argv[i], "-n") || !strcmp(argv[i], "--hide-cursor"))
+    {
+      disable_cursor = TRUE;
       continue;
     }
 
@@ -218,6 +295,30 @@ int main(int argc,
 
   buffer = ply_frame_buffer_new(NULL);
 
+  tmpdir = getenv("TMPDIR");
+
+  if (!tmpdir)
+    tmpdir = "/tmp";
+
+  chdir(tmpdir);
+
+  if (mkfifo(PLYMOUTH_FIFO, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP))
+  {
+    if (errno != EEXIST)
+    {
+      perror("mkfifo");
+      exit(-1);
+    }
+  }
+
+  pipe_fd = open(PLYMOUTH_FIFO, O_RDONLY | O_NONBLOCK);
+
+  if (pipe_fd == -1)
+  {
+    perror("pipe open");
+    exit(-2);
+  }
+
   if (!ply_frame_buffer_open(buffer))
   {
     exit_code = errno;
@@ -228,6 +329,12 @@ int main(int argc,
   image = ply_image_resize(image, buffer->area.width, buffer->area.height);
 
   animate_at_time(buffer, image);
+
+  /* Disable curson on TTY */
+  if (!disable_cursor)
+  {
+    hide_cursor();
+  }
 
   /* Draw message from file or defined MSG */
   if (!disable_message)
@@ -268,6 +375,9 @@ int main(int argc,
 #ifdef PLYMOUTH_STARTUP_MSG
   plymouth_draw_msg(buffer, PLYMOUTH_STARTUP_MSG);
 #endif
+
+  plymouth_main(buffer, pipe_fd, 0);
+
   ply_frame_buffer_close(buffer);
   ply_frame_buffer_free(buffer);
 

@@ -21,11 +21,10 @@
  * Written by: Charlie Brej <cbrej@cs.man.ac.uk>
  *             Kristian Høgsberg <krh@redhat.com>
  *             Ray Strode <rstrode@redhat.com>
+ *             Cedric Levasseur <cedric.levasseur@ipocus.net>
  */
 #include "plymouth-lite.h"
 #include "ply-frame-buffer.h"
-
-
 
 #ifndef PLY_FRAME_BUFFER_DEFAULT_FB_DEVICE_NAME
 #define PLY_FRAME_BUFFER_DEFAULT_FB_DEVICE_NAME "/dev/fb0"

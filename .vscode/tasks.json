@@ -6,9 +6,10 @@
         "command": "/bin/gcc-9",
         "args": [
             "-g",
-            "${file}",
+            "${fileDirname}/plymouth-lite.c",
             "${fileDirname}/ply-image.c",
             "${fileDirname}/ply-frame-buffer.c",
+            "${fileDirname}/ply-console.c",
             "-o",
             "${fileDirname}/${fileBasenameNoExtension}",
             "-lpng16",
