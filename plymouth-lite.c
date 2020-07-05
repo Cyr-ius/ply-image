@@ -68,7 +68,7 @@ void plymouth_draw_msg(ply_frame_buffer_t *buffer, const char *msg)
   // ply_frame_buffer_flush(buffer);
 }
 
-void psplash_draw_progress(ply_frame_buffer_t *buffer, int value)
+void plymouth_draw_progress(ply_frame_buffer_t *buffer, int value)
 {
   int x, y, width, height, barwidth;
 
@@ -202,8 +202,7 @@ void plymouth_main(ply_frame_buffer_t *buffer, int pipe_fd, int timeout)
   return;
 }
 
-int main(int argc,
-         char **argv)
+int main(int argc, char **argv)
 {
   ply_image_t *image;
   ply_frame_buffer_t *buffer;
@@ -233,7 +232,7 @@ int main(int argc,
       continue;
     }
 
-    if (!strcmp(argv[i], "-n") || !strcmp(argv[i], "--hide-cursor"))
+    if (!strcmp(argv[i], "-c") || !strcmp(argv[i], "--hide-cursor"))
     {
       disable_cursor = TRUE;
       continue;
@@ -281,14 +280,6 @@ int main(int argc,
       continue;
     }
 
-    if (!strcmp(argv[i], "-c") || !strcmp(argv[i], "--code"))
-    {
-      if (++i >= argc)
-        goto fail;
-      retcode = atoi(argv[i]);
-      continue;
-    }
-
     if (!strcmp(argv[i], "-i") || !strcmp(argv[i], "--image"))
     {
       if (++i >= argc)
@@ -296,6 +287,14 @@ int main(int argc,
       char imgpath[255];
       strcpy(imgpath, argv[i]);
       image = ply_image_new(imgpath);
+      continue;
+    }
+
+    if (!strcmp(argv[i], "-in") || !strcmp(argv[i], "--imagenumber"))
+    {
+      if (++i >= argc)
+        goto fail;
+      retcode = atoi(argv[i]);
       continue;
     }
 
