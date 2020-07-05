@@ -4,13 +4,17 @@ CFLAGS?=-L/usr/lib
 STRIP?=/usr/bin/strip
 DESTDIR?=/usr
 
-all:plymouth-lite checkmodifier
+all:plymouth-lite checkmodifier plymouth-text
 
 plymouth-lite:
-	$(CC) $@.c ply-frame-buffer.c -o $(CURDIR)/$@ -lpng16 -lm -lz $(LDFLAGS) $(CFLAGS)
+	$(CC) $@.c ply-frame-buffer.c ply-image.c ply-console.c -o $(CURDIR)/$@ -lpng16 -lm -lz $(LDFLAGS) $(CFLAGS)
 	$(STRIP) $@
 
 checkmodifier:
+	$(CC) $@.c -o $(CURDIR)/$@
+	$(STRIP) $@
+
+plymouth-text:
 	$(CC) $@.c -o $(CURDIR)/$@
 	$(STRIP) $@
 
@@ -20,6 +24,6 @@ install:
 	install -D -m 0755 ply-image $(DESTDIR)/bin/plymouth-lite
 
 clean:
-	rm -f ply-image checkmodifier
+	rm -f plymouth-lite checkmodifier plymouth-text
 
-.PHONY:ply-image checkmodifier install clean
+.PHONY:ply-image checkmodifier plymouth-text install clean
