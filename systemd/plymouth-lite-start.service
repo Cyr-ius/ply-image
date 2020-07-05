@@ -11,7 +11,7 @@ ConditionVirtualization=!container
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/bin/plymouth-lite /usr/share/plymouth-lite/splash.png
+ExecStart=/usr/bin/plymouth-lite -i /usr/share/plymouth-lite/splash.png
 
 [Install]
 WantedBy=sysinit.target

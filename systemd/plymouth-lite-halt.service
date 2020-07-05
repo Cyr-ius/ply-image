@@ -11,7 +11,7 @@ ConditionVirtualization=!container
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/bin/plymouth-lite /usr/share/plymouth-lite/halt.png
+ExecStart=/usr/bin/plymouth-lite /usr/share/plymouth-lite/halt.png -p -m
 
 [Install]
 WantedBy=halt.target

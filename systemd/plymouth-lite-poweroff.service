@@ -11,7 +11,7 @@ ConditionVirtualization=!container
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/bin/plymouth-lite /usr/share/plymouth-lite/poweroff.png
+ExecStart=/usr/bin/plymouth-lite /usr/share/plymouth-lite/poweroff.png -p -m
 
 [Install]
 WantedBy=poweroff.target
