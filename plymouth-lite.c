@@ -300,7 +300,7 @@ int main(int argc, char **argv)
 
   fail:
     fprintf(stderr,
-            "Usage: %s -c|--code <0|1|64|65|66|100> [-i|--image] path [-n|--no-console-switch][-m|--no-message][-p|--no-progress][-l|--no-logo][-a|--angle <0|90|180|270>]\n",
+            "Usage: %s -in|--imagenumber <0|1|64|65|66|100> [-i|--image] path [-n|--no-console-switch][-m|--no-message][-p|--no-progress][-l|--no-logo][-a|--angle <0|90|180|270>]\n",
             argv[0]);
     exit(-1);
   }
@@ -380,6 +380,21 @@ int main(int argc, char **argv)
   if (!disable_cursor)
   {
     hide_cursor();
+  }
+
+  /* Draw progress bar border */
+  if (!disable_progress_bar)
+  {
+    ply_frame_buffer_draw_image(buffer,
+                                (buffer->area.width - BAR_IMG_WIDTH) / 2,
+                                buffer->area.height - (buffer->area.height / 6),
+                                BAR_IMG_WIDTH,
+                                BAR_IMG_HEIGHT,
+                                BAR_IMG_BYTES_PER_PIXEL,
+                                BAR_IMG_ROWSTRIDE,
+                                BAR_IMG_RLE_PIXEL_DATA);
+
+    plymouth_draw_progress(buffer, 0);
   }
 
   /* Draw message from file or defined MSG */
