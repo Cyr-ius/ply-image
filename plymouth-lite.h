@@ -65,7 +65,7 @@ typedef struct PlymouthFont
 #define UNUSED(x) UNUSED_##x
 #endif
 
-#define DEBUG 1
+#define DEBUG 0
 
 #if DEBUG
 #define DBG(x, a...)                                                  \
