@@ -56,7 +56,7 @@ void plymouth_draw_msg(ply_frame_buffer_t *buffer, const char *msg)
   DBG("displaying '%s' %ix%i\n", msg, w, h);
 
   /* Clear */
-
+  ply_frame_buffer_pause_updates(buffer);
   ply_frame_buffer_draw_text(buffer,
                              (buffer->area.width - w) / 2,
                              SPLIT_LINE_POS(buffer) - h,
@@ -77,7 +77,7 @@ void plymouth_draw_progress(ply_frame_buffer_t *buffer, int value)
   y = SPLIT_LINE_POS(buffer) + 4;
   width = BAR_IMG_WIDTH - 8;
   height = BAR_IMG_HEIGHT - 8;
-
+  ply_frame_buffer_pause_updates(buffer);
   if (value > 0)
   {
     barwidth = (CLAMP(value, 0, 100) * width) / 100;
@@ -339,7 +339,7 @@ int main(int argc, char **argv)
 
   console_fd = open("/dev/tty0", O_RDWR);
 
-  buffer = ply_frame_buffer_new(NULL);
+  buffer = ply_frame_buffer_new(NULL, angle);
 
   tmpdir = getenv("TMPDIR");
 
