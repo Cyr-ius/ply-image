@@ -321,6 +321,8 @@ ply_frame_buffer_map_to_device(ply_frame_buffer_t *buffer)
   buffer->map_address = mmap(NULL, buffer->size, PROT_WRITE,
                              MAP_SHARED, buffer->device_fd, 0);
 
+  buffer->data = buffer->map_address;
+
   return buffer->map_address != MAP_FAILED;
 }
 
@@ -401,7 +403,7 @@ ply_frame_buffer_flush(ply_frame_buffer_t *buffer)
 }
 
 ply_frame_buffer_t *
-ply_frame_buffer_new(const char *device_name)
+ply_frame_buffer_new(const char *device_name, double angle)
 {
   ply_frame_buffer_t *buffer;
 
@@ -419,6 +421,7 @@ ply_frame_buffer_new(const char *device_name)
   buffer->shadow_buffer = NULL;
 
   buffer->pause_count = 0;
+  buffer->angle = angle;
 
   return buffer;
 }
@@ -632,11 +635,13 @@ bool ply_frame_buffer_fill_with_gradient(ply_frame_buffer_t *buffer,
 #define GREEN_SHIFT (RED_SHIFT + 8)
 #define BLUE_SHIFT (GREEN_SHIFT + 8)
 #define NOISE_MASK (0x00ffffff)
-
+#define ANGLE 0
 /* Once, we've lined up the color channel we're interested in with
  * the noise, we need to mask out the other channels.
  */
 #define COLOR_MASK (0xff << (24 - NOISE_BITS))
+
+#define OFFSET(buffer, x, y) (((y) * (buffer)->row_stride) + ((x) * ((buffer)->bytes_per_pixel >> 3)))
 
   uint32_t red, green, blue, red_step, green_step, blue_step, t, pixel;
   uint32_t x, y;
@@ -815,91 +820,41 @@ ply_frame_buffer_plot_pixel(ply_frame_buffer_t *buffer,
   if (x < 0 || x > buffer->area.width - 1 || y < 0 || y > buffer->area.height - 1)
     return;
 
-  // switch (buffer->angle)
-  // {
-  // case 270:
-  //   off = OFFSET(buffer, buffer->area.height - y - 1, x);
-  //   break;
-  // case 180:
-  //   off = OFFSET(buffer, buffer->area.width - x - 1, buffer->area.height - y - 1);
-  //   break;
-  // case 90:
-  //   off = OFFSET(buffer, y, buffer->area.width - x - 1);
-  //   break;
-  // case 0:
-  // default:
-  //   off = OFFSET(buffer, x, y);
-  //   break;
-  // }
+  switch (buffer->angle)
+  {
+  case 270:
+    off = OFFSET(buffer, buffer->area.height - y - 1, x);
+    break;
+  case 180:
+    off = OFFSET(buffer, buffer->area.width - x - 1, buffer->area.height - y - 1);
+    break;
+  case 90:
+    off = OFFSET(buffer, y, buffer->area.width - x - 1);
+    break;
+  case 0:
+  default:
+    off = OFFSET(buffer, x, y);
+    break;
+  }
 
-  //   if (buffer->rgbmode == RGB565 || buffer->rgbmode == RGB888)
-  //   {
-  //     switch (buffer->bpp)
-  //     {
-  //     case 24:
-  // #if __BYTE_ORDER == __BIG_ENDIAN
-  //       *(buffer->data + off + 0) = red;
-  //       *(buffer->data + off + 1) = green;
-  //       *(buffer->data + off + 2) = blue;
-  // #else
-  //       *(buffer->data + off + 0) = blue;
-  //       *(buffer->data + off + 1) = green;
-  //       *(buffer->data + off + 2) = red;
-  // #endif
-  //       break;
-  //     case 32:
-  //       *(volatile uint32_t *)(buffer->data + off) = (red << 16) | (green << 8) | (blue);
-  //       break;
+  switch (buffer->bytes_per_pixel)
+  {
+  case 24:
+    *(buffer->data + off + 0) = blue;
+    *(buffer->data + off + 1) = green;
+    *(buffer->data + off + 2) = red;
+    break;
+  case 32:
+    *(volatile uint32_t *)(buffer->data + off) = (red << 16) | (green << 8) | (blue);
+    break;
 
-  //     case 16:
-  //       *(volatile uint16_t *)(buffer->data + off) = ((red >> 3) << 11) | ((green >> 2) << 5) | (blue >> 3);
-  //       break;
-  //     default:
-  //       /* depth not supported yet */
-  //       break;
-  //     }
-  //   }
-  //   else if (buffer->rgbmode == BGR565 || buffer->rgbmode == BGR888)
-  //   {
-  //     switch (buffer->bpp)
-  //     {
-  //     case 24:
-  // #if __BYTE_ORDER == __BIG_ENDIAN
-  //       *(buffer->data + off + 0) = blue;
-  //       *(buffer->data + off + 1) = green;
-  //       *(buffer->data + off + 2) = red;
-  // #else
-  //       *(buffer->data + off + 0) = red;
-  //       *(buffer->data + off + 1) = green;
-  //       *(buffer->data + off + 2) = blue;
-  // #endif
-  //       break;
-  //     case 32:
-  //       *(volatile uint32_t *)(buffer->data + off) = (blue << 16) | (green << 8) | (red);
-  //       break;
-  //     case 16:
-  //       *(volatile uint16_t *)(buffer->data + off) = ((blue >> 3) << 11) | ((green >> 2) << 5) | (red >> 3);
-  //       break;
-  //     default:
-  //       /* depth not supported yet */
-  //       break;
-  //     }
-  //   }
-  //   else
-  //   {
-  //     switch (buffer->bpp)
-  //     {
-  //     case 32:
-  //       *(volatile uint32_t *)(buffer->data + off) = ((red >> (8 - buffer->bits_for_red)) << buffer->red_bit_position) | ((green >> (8 - buffer->bits_for_green)) << buffer->green_bit_position) | ((blue >> (8 - buffer->blue_bit_position)) << buffer->blue_bit_position);
-  //       break;
-  //     case 16:
-  //       *(volatile uint16_t *)(buffer->data + off) = ((red >> (8 - buffer->bits_for_red)) << buffer->red_bit_position) | ((green >> (8 - buffer->bits_for_green)) << buffer->green_bit_position) | ((blue >> (8 - buffer->blue_bit_position)) << buffer->blue_bit_position);
-  //       break;
-  //     default:
-  //       /* depth not supported yet */
-  //       break;
-  //     }
-  //   }
+  case 16:
+    *(volatile uint16_t *)(buffer->data + off) = ((red >> 3) << 11) | ((green >> 2) << 5) | (blue >> 3);
+    break;
+  default:
+    /* depth not supported yet */
+    break;
+  }
 }
 
 void ply_frame_buffer_draw_text(ply_frame_buffer_t *buffer,
@@ -1000,6 +955,66 @@ void ply_frame_buffer_draw_rect(ply_frame_buffer_t *buffer,
       ply_frame_buffer_plot_pixel(buffer, x + dx, y + dy, red, green, blue);
 }
 
+void ply_frame_buffer_draw_image(ply_frame_buffer_t *buffer,
+                                 int x,
+                                 int y,
+                                 int img_width,
+                                 int img_height,
+                                 int img_bytes_per_pixel,
+                                 int img_rowstride,
+                                 uint8 *rle_data)
+{
+  uint8 *p = rle_data;
+  int dx = 0, dy = 0, total_len;
+  unsigned int len;
+
+  total_len = img_rowstride * img_height;
+
+  /* FIXME: Optimise, check for over runs ... */
+  while ((p - rle_data) < total_len)
+  {
+    len = *(p++);
+
+    if (len & 128)
+    {
+      len -= 128;
+
+      if (len == 0)
+        break;
+
+      do
+      {
+        if ((img_bytes_per_pixel < 4 || *(p + 3)) && dx < img_width)
+          ply_frame_buffer_plot_pixel(buffer, x + dx, y + dy, *(p), *(p + 1), *(p + 2));
+        if (++dx * img_bytes_per_pixel >= img_rowstride)
+        {
+          dx = 0;
+          dy++;
+        }
+      } while (--len);
+
+      p += img_bytes_per_pixel;
+    }
+    else
+    {
+      if (len == 0)
+        break;
+
+      do
+      {
+        if ((img_bytes_per_pixel < 4 || *(p + 3)) && dx < img_width)
+          ply_frame_buffer_plot_pixel(buffer, x + dx, y + dy, *(p), *(p + 1), *(p + 2));
+        if (++dx * img_bytes_per_pixel >= img_rowstride)
+        {
+          dx = 0;
+          dy++;
+        }
+        p += img_bytes_per_pixel;
+      } while (--len && (p - rle_data) < total_len);
+    }
+  }
+}
+
 #ifdef PLY_FRAME_BUFFER_ENABLE_TEST
 
 #include <math.h>
@@ -1063,7 +1078,7 @@ int main(int argc,
 
   exit_code = 0;
 
-  buffer = ply_frame_buffer_new(NULL);
+  buffer = ply_frame_buffer_new(NULL, 0);
 
   if (!ply_frame_buffer_open(buffer))
   {

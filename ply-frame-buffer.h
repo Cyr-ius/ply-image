@@ -51,8 +51,10 @@ struct _ply_frame_buffer
 {
   char *device_name;
   int device_fd;
+  long angle;
 
   char *map_address;
+  char *data;
   size_t size;
 
   uint32_t *shadow_buffer;
@@ -85,7 +87,7 @@ struct _ply_frame_buffer
 #define PLY_FRAME_BUFFER_COLOR_TO_PIXEL_VALUE(r, g, b, a) \
   (((uint8_t)(CLAMP(a * 255.0, 0.0, 255.0)) << 24) | ((uint8_t)(CLAMP(r * 255.0, 0.0, 255.0)) << 16) | ((uint8_t)(CLAMP(g * 255.0, 0.0, 255.0)) << 8) | ((uint8_t)(CLAMP(b * 255.0, 0.0, 255.0))))
 
-ply_frame_buffer_t *ply_frame_buffer_new(const char *device_name);
+ply_frame_buffer_t *ply_frame_buffer_new(const char *device_name, double angle);
 void ply_frame_buffer_free(ply_frame_buffer_t *buffer);
 static bool ply_frame_buffer_open_device(ply_frame_buffer_t *buffer);
 static void ply_frame_buffer_close_device(ply_frame_buffer_t *buffer);
@@ -174,5 +176,14 @@ void ply_frame_buffer_draw_rect(ply_frame_buffer_t *buffer,
                                 uint8 green,
                                 uint8 blue);
 
+void ply_frame_buffer_draw_image(ply_frame_buffer_t *buffer,
+                                 int x,
+                                 int y,
+                                 int img_width,
+                                 int img_height,
+                                 int img_bytes_per_pixel,
+                                 int img_rowstride,
+                                 uint8 *rle_data);
+
 #endif /* PLY_FRAME_BUFFER_H */
-/* vim: set ts=4 sw=4 expandtab autoindent cindent cino={.5s,(0: */
+       /* vim: set ts=4 sw=4 expandtab autoindent cindent cino={.5s,(0: */
